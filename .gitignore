@@ -1,0 +1,43 @@
+.env
+__pycache__/
+*.pyc
+logs/
+*.log
+.telegram_offset
+token.json
+
+# Scene Planner V2 cardinality-mismatch diagnostic (TEMPORARY - see
+# _write_cardinality_diagnostic() in youtube/scene_planner.py). Local-only
+# debug output, never meant to be committed.
+debug_audit/
+
+# YouTube OAuth credential files (Round 3.2 multi-channel): this project's
+# own config (core/config.py, youtube/uploader.py) reads OAuth client
+# id/secret/refresh-token values from environment variables only - never
+# from a JSON file - but the Google Cloud Console OAuth-client download is
+# still commonly saved locally as client_secret*.json (or per-channel,
+# e.g. youtube/client_secret_english.json) for reference while copying
+# values into .env. These patterns keep any such file - and any ad hoc
+# per-channel token/credential file someone adds later - out of git,
+# wherever in the repo it's placed.
+client_secret*.json
+**/client_secret*.json
+*_token.json
+credentials/
+youtube/credentials/
+
+# Generated per-video output (research.json/script.json/scenes.json/
+# scene_*.png/narration.mp3/video.mp4/.../state.json under
+# storage/<year>/<month>/<slug>/) and the runtime SQLite DB - NOT the
+# storage/ Python package that lives in this same directory
+# (storage/__init__.py, db.py, project_store.py). A blanket "storage/"
+# rule here would also silently gitignore those source files - confirmed
+# with `git check-ignore -v storage/db.py` - and the "!storage/..."
+# negation pattern that used to try to carve them back out never actually
+# worked, since git cannot re-include a path inside an already-excluded
+# parent directory. Ignoring only the specific runtime-generated paths
+# avoids both problems.
+storage/factory.db
+storage/20[0-9][0-9]/
+storage/music/*
+!storage/music/.gitkeep

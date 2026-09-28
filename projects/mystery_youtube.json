@@ -1,0 +1,60 @@
+{
+  "id": "mystery_youtube",
+
+  "brand_voice": {
+    "name": "Mystery Documentary",
+    "tone": "cinematic, mysterious, factual, engaging, calm and authoritative narration",
+    "audience": "global English-speaking YouTube audience",
+    "avoid": [
+      "fake facts",
+      "fabricated sources",
+      "generic clickbait",
+      "fabricated quotes",
+      "sensationalism not supported by the research"
+    ],
+    "categories": [
+      "Mysteries",
+      "Strange Historical Events",
+      "Unexplained Places",
+      "Lost Civilizations",
+      "Ancient Mysteries",
+      "Strange Scientific Facts",
+      "Unsolved Historical Cases",
+      "Hidden Places",
+      "Disappearances",
+      "Weird Geography",
+      "Forgotten Technologies",
+      "Extraordinary Human Stories"
+    ],
+    "visual_style": "cinematic documentary, moody natural lighting, photorealistic, muted color grade, no on-screen text"
+  },
+
+  "video": {
+    "enabled": true,
+    "narration_language": "en",
+    "min_scene_count": 25,
+    "max_scene_count": 40,
+    "target_seconds_min": 480,
+    "target_seconds_max": 600
+  },
+
+  "image_size": {
+    "width": 1920,
+    "height": 1080
+  },
+
+  "background_music": false,
+
+  "languages": {
+    "master": "en",
+    "localizations": ["tr"],
+    "planned": ["es", "de", "fr", "it", "pt", "id"]
+  },
+
+  "tts": {
+    "en": { "voice": "onyx" },
+    "tr": { "voice": "onyx" }
+  },
+
+  "_note_on_this_file": "This project config is declarative/documentation-level - the pipeline's actual, live-consumed multilingual configuration is core/config.py's LANGUAGE_MASTER / LANGUAGE_LOCALIZATIONS / TTS_VOICE_<LANG> environment variables (see .env.example). Keep this file's languages/tts blocks in sync with those env vars by hand for now."
+}
