@@ -238,15 +238,11 @@ def test_one_short_production_exception_does_not_stop_the_others(shorts_env, mon
 # calling a real paid API.
 # ---------------------------------------------------------------------------
 
-def test_short_that_narrates_too_long_naturally_fails_the_real_duration_gate(shorts_env, monkeypatch):
+def test_short_that_narrates_longer_than_former_target_is_still_ready(shorts_env, monkeypatch):
     paths, script, scenes = shorts_env
 
-    # MockTTSProvider paces its synthetic audio at MOCK_WORDS_PER_SECOND
-    # (2.5 words/sec - see youtube/tts.py). 140 words of real, unmodified
-    # narration therefore assembles into a real MP4 of ~56s, outside the
-    # default 30-50s target band - mirroring the real 122-word/55.2s
-    # production incident, but derived from the actual rendered file, not
-    # a forced/monkeypatched QC result.
+    # 140 words produces roughly 56 seconds with MockTTS.
+    # Duration is no longer a Shorts QC hard gate.
     long_narration = " ".join(f"word{i}" for i in range(140)) + "."
 
     def fake_chat_json(system, user, max_tokens=2000, model=None, use_web_search=False):
@@ -254,18 +250,28 @@ def test_short_that_narrates_too_long_naturally_fails_the_real_duration_gate(sho
 
     monkeypatch.setattr(shorts_planner.llm_client, "chat_json", fake_chat_json)
 
-    results = shorts_engine.produce_shorts_for_video(paths, script, scenes, shorts_per_long=1)
+    results = shorts_engine.produce_shorts_for_video(
+        paths,
+        script,
+        scenes,
+        shorts_per_long=1,
+    )
+
     assert len(results) == 1
+
     result = results[0]
 
-    assert result["status"] == shorts_store.STATUS_FAILED
-    assert result["qc_passed"] is False
-    assert any("duration_within_target_range" in e for e in result["qc_errors"])
+    assert result["status"] == shorts_store.STATUS_READY
+    assert result["qc_passed"] is True
+    assert not any(
+        "duration_within_target_range" in error
+        for error in result.get("qc_errors", [])
+    )
 
     row = shorts_store.get_short(result["short_id"])
-    assert row["duration_seconds"] is not None
-    assert row["duration_seconds"] > settings.SHORTS_TARGET_SECONDS_MAX  # real ffprobe duration, not an estimate
 
+    assert row["duration_seconds"] is not None
+    assert row["duration_seconds"] > settings.SHORTS_TARGET_SECONDS_MAX
 
 def test_already_ready_short_is_not_reproduced(shorts_env, monkeypatch):
     from youtube import shorts_visual

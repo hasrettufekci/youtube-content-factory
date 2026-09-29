@@ -137,18 +137,10 @@ def run_short_quality_check(
 
     check("video_duration_valid", duration > 0, f"duration={duration:.1f}s")
 
-    # HARD GATE (see module docstring "DURATION HARD GATE" note): a Short
-    # whose real, ffprobe-measured MP4 duration falls outside the
-    # configured target band must FAIL QC - never approximated from
-    # narration word count or the planner's own estimate. Always reads the
-    # two settings live so a .env change takes effect with no code change.
-    min_seconds = settings.SHORTS_TARGET_SECONDS_MIN
-    max_seconds = settings.SHORTS_TARGET_SECONDS_MAX
-    duration_in_range = min_seconds <= duration <= max_seconds
-    check("duration_within_target_range", duration_in_range,
-          f"duration={duration:.1f}s target={min_seconds}-{max_seconds}s")
-    logger.info("[SHORTS_QC] duration=%.1fs target=%d-%ds -> %s",
-                duration, min_seconds, max_seconds, "PASS" if duration_in_range else "FAIL")
+    # Duration is intentionally NOT a hard QC gate.
+    # A Short may be shorter or longer than the former target band.
+    # We only require a real, positive video duration above.
+    logger.info("[SHORTS_QC] duration=%.1fs -> duration target gate disabled", duration)
 
     if video_streams:
         w, h = video_streams[0].get("width"), video_streams[0].get("height")

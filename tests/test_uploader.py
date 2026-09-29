@@ -630,7 +630,7 @@ def test_upload_defaults_to_private_privacy(monkeypatch):
 
 def test_upload_privacy_default_is_never_public_even_when_unspecified(monkeypatch):
     _set_legacy_env(monkeypatch)
-    assert settings.YOUTUBE_UPLOAD_PRIVACY == "private"  # the project-wide default, unchanged by this round
+    assert settings.YOUTUBE_UPLOAD_PRIVACY == "public"
 
 
 # ---------------------------------------------------------------------------

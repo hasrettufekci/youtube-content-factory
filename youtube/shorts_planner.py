@@ -46,34 +46,20 @@ ANGLE_PLAN: list[tuple[int, str, str]] = [
     (3, "twist_mystery", "mystery"),
 ]
 
-# DURATION HARD-GATE PATCH (2026-09): word budget now derived from
-# settings.SHORTS_WORDS_PER_SECOND - a conservative, real-narration-pace
-# estimate kept separate from scene_planner.py's/tts.py's own 2.5 wps
-# constants (see core/config.py's SHORTS_WORDS_PER_SECOND docstring for
-# why). HARD_WORDS_MIN/MAX bound the non-negotiable QC gate band;
-# PREFERRED_WORDS_MIN/MAX bound the narrower sweet spot the prompt below
-# actually asks the model to aim for (spec: "Tercihen: 40-48 saniye").
-WORDS_PER_SECOND = settings.SHORTS_WORDS_PER_SECOND
-TARGET_WORDS_MIN = max(int(settings.SHORTS_TARGET_SECONDS_MIN * WORDS_PER_SECOND), 1)
-TARGET_WORDS_MAX = int(settings.SHORTS_TARGET_SECONDS_MAX * WORDS_PER_SECOND)
-PREFERRED_WORDS_MIN = max(int(settings.SHORTS_PREFERRED_SECONDS_MIN * WORDS_PER_SECOND), 1)
-PREFERRED_WORDS_MAX = int(settings.SHORTS_PREFERRED_SECONDS_MAX * WORDS_PER_SECOND)
+# Short narration length is intentionally not constrained by a
+# fixed duration band. The generated narration should be a complete,
+# natural mini-story; actual video duration is validated only as a
+# positive/playable duration by shorts_qc.py.
 
 SYSTEM_PROMPT = f"""You write a YouTube Shorts narration script, condensed from ONE section of an
 existing, already-researched documentary script. This is a condensation task, not a new writing task.
 
-LENGTH (IMPORTANT - real spoken narration, not a word-count guess, is what gets checked afterward):
-- Absolute hard limits: the narration must read aloud in no less than {settings.SHORTS_TARGET_SECONDS_MIN}
-  and no more than {settings.SHORTS_TARGET_SECONDS_MAX} seconds. A Short outside this band is rejected
-  automatically after narration is recorded, so treat these as limits you must never cross.
-- Preferred target: aim for {settings.SHORTS_PREFERRED_SECONDS_MIN}-{settings.SHORTS_PREFERRED_SECONDS_MAX}
-  seconds of natural, unhurried spoken narration - roughly {PREFERRED_WORDS_MIN}-{PREFERRED_WORDS_MAX} words
-  at a calm, deliberate documentary pace (never {TARGET_WORDS_MAX} words - that pace reads far closer to the
-  {settings.SHORTS_TARGET_SECONDS_MAX}s ceiling than to the preferred range).
-- If you are unsure whether a draft is a little long or a little short, prefer the shorter side of the
-  preferred range - it is far safer than drifting toward the maximum.
-- Never sacrifice a complete sentence or a natural ending to hit a word count. Write the best complete,
-  well-paced mini-narration for the preferred range; do not pad it out just to reach the maximum either.
+LENGTH:
+- There is no fixed minimum or maximum duration for the Short.
+- Write the best complete, natural mini-narration for the selected angle.
+- Do not pad, truncate, or mechanically rewrite the narration to hit a duration or word-count target.
+- Preserve a natural beginning, development, and ending. Complete sentences and factual clarity are more
+  important than any target duration.
 
 RULES (STRICT):
 - Base the narration ONLY on the "SOURCE TEXT" given below. Do not add any fact, name, date, number,
@@ -162,25 +148,12 @@ def generate_short_script(long_title: str, plan: dict) -> dict:
     word_count = len(narration.split())
     logger.info("[SHORTS_PLANNER] short_number=%d angle=%s title=%r words=%d",
                 plan["short_number"], plan["angle"], title, word_count)
-    # Visibility only (NEVER mechanically truncated/padded here - the real,
-    # ffprobe-measured audio duration is what youtube/shorts_qc.py's hard
-    # gate actually enforces; see that module). A word count outside the
-    # hard band is logged loudly so a drifting planner/prompt is noticed
-    # long before QC would catch it downstream.
-    if not (TARGET_WORDS_MIN <= word_count <= TARGET_WORDS_MAX):
-        logger.warning(
-            "[SHORTS_PLANNER] short_number=%d words=%d outside hard target word band (%d-%d, ~%.1fs-%.1fs "
-            "at %.2f words/sec) - narration NOT altered here; real duration will be hard-gated by shorts_qc.py",
-            plan["short_number"], word_count, TARGET_WORDS_MIN, TARGET_WORDS_MAX,
-            settings.SHORTS_TARGET_SECONDS_MIN, settings.SHORTS_TARGET_SECONDS_MAX, WORDS_PER_SECOND,
-        )
-    elif not (PREFERRED_WORDS_MIN <= word_count <= PREFERRED_WORDS_MAX):
-        logger.info(
-            "[SHORTS_PLANNER] short_number=%d words=%d inside the hard band but outside the preferred "
-            "%d-%d word sweet spot (~%ds-%ds)", plan["short_number"], word_count,
-            PREFERRED_WORDS_MIN, PREFERRED_WORDS_MAX,
-            settings.SHORTS_PREFERRED_SECONDS_MIN, settings.SHORTS_PREFERRED_SECONDS_MAX,
-        )
+    # Duration is intentionally not a planner constraint.
+    # Keep the word count visible for diagnostics only.
+    logger.info(
+        "[SHORTS_PLANNER] short_number=%d words=%d - no duration/word-count gate",
+        plan["short_number"], word_count,
+    )
     return {"title": title, "narration": narration, "word_count": word_count}
 
 

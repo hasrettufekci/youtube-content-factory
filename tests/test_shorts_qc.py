@@ -126,121 +126,100 @@ def test_run_short_quality_check_fails_when_narration_not_grounded_in_source(tmp
 
 
 # ---------------------------------------------------------------------------
-# DURATION HARD-GATE PATCH - "duration_within_target_range" (settings.
-# SHORTS_TARGET_SECONDS_MIN/MAX, read live, never hardcoded)
+# SHORT DURATION POLICY
+# Duration has no configured minimum/maximum hard gate.
+# The QC only requires a real positive video duration.
 # ---------------------------------------------------------------------------
 
-def _run_with_duration(tmp_path, monkeypatch, duration, **overrides):
+def _run_with_duration(tmp_path, monkeypatch, duration):
+    video_path = tmp_path / "short.mp4"
+    video_path.write_bytes(b"fake-video")
+
+    thumbnail_path = tmp_path / "thumbnail.jpg"
+
     from PIL import Image
+    Image.new("RGB", (1080, 1920), "white").save(thumbnail_path, format="JPEG")
 
-    video = tmp_path / f"short_{duration}.mp4"
-    video.write_bytes(b"x" * 100)
-    thumb = tmp_path / f"short_{duration}.png"
-    Image.new("RGB", (1080, 1920)).save(thumb)
+    fake_probe = {
+        "streams": [
+            {
+                "codec_type": "video",
+                "width": 1080,
+                "height": 1920,
+            },
+            {
+                "codec_type": "audio",
+            },
+        ],
+        "format": {
+            "duration": str(duration),
+        },
+    }
 
-    monkeypatch.setattr(shorts_qc, "_ffprobe_json", lambda path: _probe(duration=duration))
+    monkeypatch.setattr(shorts_qc, "_ffprobe_json", lambda path: fake_probe)
 
     return shorts_qc.run_short_quality_check(
-        video, thumb,
-        narration=overrides.get("narration", "The signal was never explained by any known source."),
-        title=overrides.get("title", "The Unexplained Signal"),
-        source_text=overrides.get("source_text", "The signal was never explained by any known source."),
+        video_path=video_path,
+        thumbnail_path=thumbnail_path,
+        title="Valid Short Title",
+        narration="This is a valid English narration for the Short.",
+        source_text="This is the source text supporting the valid English narration for the Short.",
     )
 
 
-def test_duration_below_minimum_fails_qc(tmp_path, monkeypatch):
-    # Scenario 1: duration < settings.SHORTS_TARGET_SECONDS_MIN (default 30s) -> FAIL
+def test_duration_below_former_minimum_still_passes_qc(tmp_path, monkeypatch):
     report = _run_with_duration(tmp_path, monkeypatch, duration=25.0)
-    assert report.checks["duration_within_target_range"]["passed"] is False
-    assert not report.passed
-
-
-def test_duration_at_minimum_passes_qc(tmp_path, monkeypatch):
-    # Scenario 2: duration == settings.SHORTS_TARGET_SECONDS_MIN (default 30s) -> PASS
-    report = _run_with_duration(tmp_path, monkeypatch, duration=float(settings.SHORTS_TARGET_SECONDS_MIN))
-    assert report.checks["duration_within_target_range"]["passed"] is True
+    assert "duration_within_target_range" not in report.checks
+    assert report.checks["video_duration_valid"]["passed"] is True
     assert report.passed
 
 
-def test_duration_in_normal_range_passes_qc(tmp_path, monkeypatch):
-    # Scenario 3: a normal mid-range duration (e.g. 42s, inside 30-50s) -> PASS
-    report = _run_with_duration(tmp_path, monkeypatch, duration=42.0)
-    assert report.checks["duration_within_target_range"]["passed"] is True
-    assert report.passed
-
-
-def test_duration_at_maximum_passes_qc(tmp_path, monkeypatch):
-    # Scenario 4: duration == settings.SHORTS_TARGET_SECONDS_MAX (default 50s) -> PASS
-    report = _run_with_duration(tmp_path, monkeypatch, duration=float(settings.SHORTS_TARGET_SECONDS_MAX))
-    assert report.checks["duration_within_target_range"]["passed"] is True
-    assert report.passed
-
-
-def test_duration_above_maximum_fails_qc(tmp_path, monkeypatch):
-    # Scenario 5: reproduces the real production incident - a 55.2s Short
-    # against the default 30-50s band must now FAIL (it previously passed).
-    report = _run_with_duration(tmp_path, monkeypatch, duration=55.2)
-    assert report.checks["duration_within_target_range"]["passed"] is False
-    assert "duration=55.2s" in report.checks["duration_within_target_range"]["detail"]
-    assert "target=30-50s" in report.checks["duration_within_target_range"]["detail"]
-    assert not report.passed
-    assert any("duration_within_target_range" in e for e in report.errors)
-
-
-def test_duration_just_below_minimum_fails_qc(tmp_path, monkeypatch):
-    # Exact boundary: 29.9s is 0.1s under the default 30s minimum -> FAIL.
+def test_duration_29_9_seconds_still_passes_qc(tmp_path, monkeypatch):
     report = _run_with_duration(tmp_path, monkeypatch, duration=29.9)
-    assert report.checks["duration_within_target_range"]["passed"] is False
-    assert not report.passed
-
-
-def test_duration_just_above_maximum_fails_qc(tmp_path, monkeypatch):
-    # Exact boundary: 50.1s is 0.1s over the default 50s maximum -> FAIL.
-    report = _run_with_duration(tmp_path, monkeypatch, duration=50.1)
-    assert report.checks["duration_within_target_range"]["passed"] is False
-    assert not report.passed
-
-
-def test_duration_40_seconds_mid_range_passes_qc(tmp_path, monkeypatch):
-    # Explicit mid-band point (spec's own preferred-range midpoint) -> PASS.
-    report = _run_with_duration(tmp_path, monkeypatch, duration=40.0)
-    assert report.checks["duration_within_target_range"]["passed"] is True
+    assert "duration_within_target_range" not in report.checks
     assert report.passed
 
 
-def test_real_short_02_reported_duration_55_77s_fails_qc(tmp_path, monkeypatch):
-    # Reproduces the specific real-production value the user reported for
-    # D:\...\medieval-norman-castle-discovered-hidden-inside-3\shorts\
-    # short_02.mp4 (55.77s, measured by the user's own ffprobe run on their
-    # machine - this sandbox has no access to that file or to their DB, so
-    # this test does NOT independently re-measure it; it feeds the
-    # user-reported value into the real, unmodified run_short_quality_check()
-    # from commit 79f5c00 via the same synthetic-probe technique used for
-    # the rest of this file, to prove what that real code does with it).
+def test_duration_40_seconds_passes_qc(tmp_path, monkeypatch):
+    report = _run_with_duration(tmp_path, monkeypatch, duration=40.0)
+    assert "duration_within_target_range" not in report.checks
+    assert report.passed
+
+
+def test_duration_above_former_maximum_passes_qc(tmp_path, monkeypatch):
+    report = _run_with_duration(tmp_path, monkeypatch, duration=55.2)
+    assert "duration_within_target_range" not in report.checks
+    assert report.checks["video_duration_valid"]["passed"] is True
+    assert report.passed
+
+
+def test_duration_55_77_seconds_passes_qc(tmp_path, monkeypatch):
     report = _run_with_duration(tmp_path, monkeypatch, duration=55.77)
-    assert report.checks["duration_within_target_range"]["passed"] is False
-    assert "duration=55.8s" in report.checks["duration_within_target_range"]["detail"]  # {:.1f} rounding of 55.77
-    assert "target=30-50s" in report.checks["duration_within_target_range"]["detail"]
-    assert not report.passed
-    assert any("duration_within_target_range" in e for e in report.errors)
+    assert "duration_within_target_range" not in report.checks
+    assert report.checks["video_duration_valid"]["passed"] is True
+    assert report.passed
 
 
-def test_config_change_is_respected_by_duration_gate(tmp_path, monkeypatch):
-    # Scenario 6: the gate must read settings live, not a hardcoded 30/50 -
-    # a 55.2s Short passes once the configured band is widened to cover it.
+def test_duration_50_1_seconds_passes_qc(tmp_path, monkeypatch):
+    report = _run_with_duration(tmp_path, monkeypatch, duration=50.1)
+    assert "duration_within_target_range" not in report.checks
+    assert report.passed
+
+
+def test_duration_gate_settings_no_longer_affect_qc(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "SHORTS_TARGET_SECONDS_MIN", 30)
     monkeypatch.setattr(settings, "SHORTS_TARGET_SECONDS_MAX", 60)
-    report = _run_with_duration(tmp_path, monkeypatch, duration=55.2)
-    assert report.checks["duration_within_target_range"]["passed"] is True
-    assert "target=30-60s" in report.checks["duration_within_target_range"]["detail"]
+
+    report = _run_with_duration(tmp_path, monkeypatch, duration=75.0)
+
+    assert "duration_within_target_range" not in report.checks
+    assert report.checks["video_duration_valid"]["passed"] is True
     assert report.passed
 
 
-def test_existing_checks_are_all_still_present_alongside_the_new_duration_gate(tmp_path, monkeypatch):
-    # Scenario 7/8: the pre-existing 13 checks must remain intact and must
-    # not be replaced by the new gate - it is additive (now 14 checks), and
-    # video_duration_valid (duration > 0) still runs independently of the
-    # new target-range gate.
+def test_existing_checks_remain_without_duration_gate(tmp_path, monkeypatch):
+    # All pre-existing checks remain intact.
+    # Duration target limits are intentionally not part of QC.
     report = _run_with_duration(tmp_path, monkeypatch, duration=42.0)
     expected_preexisting_checks = {
         "video_file_exists", "playable_video", "video_duration_valid",
@@ -250,7 +229,7 @@ def test_existing_checks_are_all_still_present_alongside_the_new_duration_gate(t
         "no_malformed_caption_markup", "no_unsupported_claims",
     }
     assert expected_preexisting_checks <= report.checks.keys()
-    assert "duration_within_target_range" in report.checks
-    assert len(report.checks) == len(expected_preexisting_checks) + 1
+    assert "duration_within_target_range" not in report.checks
+    assert len(report.checks) == len(expected_preexisting_checks)
     assert report.checks["video_duration_valid"]["passed"] is True
     assert report.passed

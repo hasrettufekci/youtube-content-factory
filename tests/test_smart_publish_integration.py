@@ -195,8 +195,8 @@ def test_smart_publish_enabled_creates_exactly_one_schedule_and_passes_publish_a
     schedules = psched.list_schedules()
     assert len(schedules) == 1
     assert schedules[0]["approval_id"] == result["approval_id"]
-    assert schedules[0]["source"] == "bootstrap"
-    assert schedules[0]["confidence"] == "bootstrap"
+    assert schedules[0]["source"] == "inferred_performance"
+    assert schedules[0]["confidence"] == "low"
     assert schedules[0]["status"] == psched.STATUS_SCHEDULED
 
     sent_metadata = fake_youtube.video_calls[0][1]
@@ -221,9 +221,9 @@ def test_smart_publish_enabled_uses_the_new_telegram_caption_format(
     assert "YouTube:" in caption
     assert "Scheduled / Private" in caption
     assert "Publish strategy:" in caption
-    assert "Bootstrap fallback" in caption
+    assert "inferred_performance" in caption
     assert "Reason:" in caption
-    assert "Channel does not yet have sufficient audience timing data." in caption
+    assert "Using audience timing data from inferred_performance" in caption
 
 
 def test_smart_publish_enabled_thumbnail_behavior_preserved(

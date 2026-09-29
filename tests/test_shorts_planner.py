@@ -151,42 +151,50 @@ def test_plan_and_generate_shorts_end_to_end(monkeypatch):
 # LLM returned.
 # ---------------------------------------------------------------------------
 
-def test_word_budget_constants_derive_from_shorts_words_per_second():
-    from core.config import settings
-    assert shorts_planner.TARGET_WORDS_MIN == int(settings.SHORTS_TARGET_SECONDS_MIN * settings.SHORTS_WORDS_PER_SECOND)
-    assert shorts_planner.TARGET_WORDS_MAX == int(settings.SHORTS_TARGET_SECONDS_MAX * settings.SHORTS_WORDS_PER_SECOND)
-    assert shorts_planner.PREFERRED_WORDS_MIN == int(settings.SHORTS_PREFERRED_SECONDS_MIN * settings.SHORTS_WORDS_PER_SECOND)
-    assert shorts_planner.PREFERRED_WORDS_MAX == int(settings.SHORTS_PREFERRED_SECONDS_MAX * settings.SHORTS_WORDS_PER_SECOND)
+def test_planner_has_no_duration_word_budget_constants():
+    assert not hasattr(shorts_planner, "TARGET_WORDS_MIN")
+    assert not hasattr(shorts_planner, "TARGET_WORDS_MAX")
+    assert not hasattr(shorts_planner, "PREFERRED_WORDS_MIN")
+    assert not hasattr(shorts_planner, "PREFERRED_WORDS_MAX")
 
+def test_system_prompt_has_no_fixed_duration_band():
+    assert "There is no fixed minimum or maximum duration" in shorts_planner.SYSTEM_PROMPT
+    assert "Do not pad, truncate, or mechanically rewrite" in shorts_planner.SYSTEM_PROMPT
+    assert "outside this band" not in shorts_planner.SYSTEM_PROMPT
+    assert "preferred target" not in shorts_planner.SYSTEM_PROMPT.lower()
 
-def test_system_prompt_states_hard_and_preferred_bands():
-    from core.config import settings
-    assert str(settings.SHORTS_TARGET_SECONDS_MIN) in shorts_planner.SYSTEM_PROMPT
-    assert str(settings.SHORTS_TARGET_SECONDS_MAX) in shorts_planner.SYSTEM_PROMPT
-    assert str(settings.SHORTS_PREFERRED_SECONDS_MIN) in shorts_planner.SYSTEM_PROMPT
-    assert str(settings.SHORTS_PREFERRED_SECONDS_MAX) in shorts_planner.SYSTEM_PROMPT
-
-
-def test_generate_short_script_reproduces_the_real_122_word_overshoot_and_does_not_alter_it(monkeypatch, caplog):
-    # Reproduces the real production case (Short 2: 122 words -> 55.2s of
-    # real audio, outside the default 30-50s band) at the planner level: a
-    # too-long LLM response is logged loudly but returned completely
-    # unmodified - no mechanical truncation, no mid-sentence cut, no
-    # artificial change of any kind. The actual hard rejection happens
-    # downstream in youtube/shorts_qc.py against the REAL rendered audio,
-    # never here against a word-count guess.
+def test_generate_short_script_allows_natural_length_without_duration_gate(monkeypatch, caplog):
     long_narration = " ".join(["word"] * 122) + "."
-    monkeypatch.setattr(shorts_planner.llm_client, "chat_json",
-                         lambda system, user, **k: ({"title": "T", "narration": long_narration}, []))
-    plan = shorts_planner.plan_short_angles(_script())[1]  # short_number=2, mirrors the real incident
 
-    with caplog.at_level("WARNING", logger="shorts_planner"):
-        result = shorts_planner.generate_short_script("The Signal Nobody Can Explain", plan)
+    monkeypatch.setattr(
+        shorts_planner.llm_client,
+        "chat_json",
+        lambda system, user, **k: (
+            {"title": "T", "narration": long_narration},
+            [],
+        ),
+    )
 
-    assert result["narration"] == long_narration  # untouched - no truncation
+    plan = shorts_planner.plan_short_angles(_script())[1]
+
+    with caplog.at_level("INFO", logger="shorts_planner"):
+        result = shorts_planner.generate_short_script(
+            "The Signal Nobody Can Explain",
+            plan,
+        )
+
+    assert result["narration"] == long_narration
     assert result["word_count"] == 122
-    assert any("outside hard target word band" in r.message for r in caplog.records)
 
+    assert not any(
+        "outside hard target word band" in r.message
+        for r in caplog.records
+    )
+
+    assert any(
+        "no duration/word-count gate" in r.message
+        for r in caplog.records
+    )
 
 def test_generate_short_script_does_not_warn_for_a_word_count_inside_the_hard_band(monkeypatch, caplog):
     # 80 words sits comfortably inside the default hard band (66-110 words
